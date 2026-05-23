@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Кот-рыболов — проработанный кот, рыбы, сокровища и самолёт ✈</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background: linear-gradient(145deg, #1a6d2b 0%, #0e4a1c 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Quicksand', system-ui, 'Comic Neue', cursive;
+        }
+
+        .game-container {
+            background: #3b8c3a;
+            border-radius: 56px;
+            padding: 20px 30px 25px 30px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.4), inset 0 1px 4px rgba(255,255,255,0.3);
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 32px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            cursor: pointer;
+            background-color: #f9e0a0;
+        }
+
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 18px;
+            gap: 20px;
+            background: #f7d98c;
+            padding: 10px 25px;
+            border-radius: 60px;
+            box-shadow: inset 0 1px 4px rgba(98, 54, 16, 0.2), 0 6px 12px rgba(0,0,0,0.2);
+            flex-wrap: wrap;
+        }
+
+        .score-box {
+            background: #2e241f;
+            padding: 5px 20px;
+            border-radius: 50px;
+            color: #ffdfaa;
+            font-weight: bold;
+            font-size: 1.7rem;
+            font-family: monospace;
+            box-shadow: inset 0 0 5px #ffb347, 0 3px 0 #3a2a1f;
+        }
+
+        .score-box span {
+            color: #f9c482;
+            font-size: 1rem;
+            margin-right: 5px;
+        }
+
+        button {
+            background: #ffb347;
+            border: none;
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 7px 20px;
+            border-radius: 40px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: 0.1s linear;
+            color: #2c1a0c;
+            box-shadow: 0 5px 0 #a45117;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #a45117;
+        }
+
+        .tips {
+            background: #ead2a3;
+            border-radius: 28px;
+            padding: 6px 16px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #4a2a12;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .tips i {
+            font-style: normal;
+            background: #2c2b26;
+            color: #ffdd99;
+            padding: 2px 12px;
+            border-radius: 36px;
+        }
+
+        @media (max-width: 750px) {
+            .game-container {
+                padding: 12px 18px 18px 18px;
+            }
+            .score-box {
+                font-size: 1.3rem;
+                padding: 3px 12px;
+            }
+            button {
+                font-size: 1rem;
+                padding: 5px 15px;
+            }
+            .tips {
+                font-size: 0.7rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="900" height="550"></canvas>
+        <div class="info-panel">
+            <div class="score-box"><span>🎣 Счёт:</span> <span id="fishCount">0</span></div>
+            <div class="tips">
+                🐟 <i>Кликни по воде</i> — закинуть удочку
+                <span>🐱 Поклёвка → тяни!</span>
+                <span>✈ Лови самолёт!</span>
+            </div>
+            <button id="resetBtn">🌊 Начать заново</button>
+        </div>
+    </div>
+    <div style="text-align: center; margin-top: 12px; color: #f9f0c0; text-shadow: 1px 1px 0 #1a4f1a; font-weight: bold;">
+        🐈 Пушистый кот Мурзик ✈ лови рыбу, крабов, клады и самолёты!
+    </div>
+</div>
+
+<script>
+    (function(){
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const CW = 900;
+        const CH = 550;
+
+        let score = 0;
+        let fishing = false;
+        let fishHooked = false;
+        let biteTimer = null;
+        let currentCatch = null;
+        
+        let bobberX = 0, bobberY = 0;
+        
+        const catX = 180;
+        const catYBase = 400;
+        const shoreLineY = 390;
+        const waterBottomY = CH-20;
+        
+        let bobberActive = false;
+        let biteEffect = 0;
+        let catchEffect = { active: false, x: 0, y: 0, timer: 0, text: "" };
+        
+        let floatingItems = [];
+        const MAX_ITEMS = 24;
+        
+        // Множество предметов для ловли — ДОБАВИЛ САМОЛЁТ ✈
+        const catchableItems = [
+            { emoji: "🐟", name: "золотая рыбка", points: 10, isFish: true, rarity: 1 },
+            { emoji: "🐠", name: "рыбка-клоун", points: 15, isFish: true, rarity: 1 },
+            { emoji: "🐡", name: "фугу", points: 20, isFish: true, rarity: 0.8 },
+            { emoji: "🐙", name: "осьминог", points: 25, isFish: false, rarity: 0.5 },
+            { emoji: "🦀", name: "краб", points: 18, isFish: false, rarity: 0.7 },
+            { emoji: "👢", name: "старый сапог", points: -5, isFish: false, rarity: 0.6 },
+            { emoji: "🕳️", name: "дырявое ведро", points: -3, isFish: false, rarity: 0.5 },
+            { emoji: "👑", name: "золотая корона", points: 100, isFish: false, rarity: 0.4 },
+            { emoji: "💰", name: "сундук с монетами", points: 50, isFish: false, rarity: 0.3 },
+            { emoji: "🧦", name: "носочек", points: -2, isFish: false, rarity: 0.6 },
+            { emoji: "⭐", name: "морская звезда", points: 30, isFish: false, rarity: 0.4 },
+            { emoji: "🐚", name: "ракушка", points: 12, isFish: false, rarity: 0.7 },
+            { emoji: "🍾", name: "бутылка с запиской", points: 25, isFish: false, rarity: 0.4 },
+            { emoji: "✈", name: "игрушечный самолёт", points: 75, isFish: false, rarity: 0.15 }   // САМОЛЁТ!
+        ];
+        
+        let blink = 0;
+        let blinkTimer = 0;
+        
+        function randomRange(min, max) {
+            return min + Math.random() * (max - min);
+        }
+        
+        function initFloatingItems() {
+            floatingItems = [];
+            for(let i=0; i<MAX_ITEMS; i++) {
+                let randomItem = { ...catchableItems[Math.floor(Math.random() * catchableItems.length)] };
+                floatingItems.push({
+                    x: randomRange(420, CW-50),
+                    y: randomRange(shoreLineY+20, waterBottomY-25),
+                    size: randomRange(14, 26),
+                    speedX: randomRange(0.3, 1.2) * (Math.random() > 0.5 ? 1 : -1),
+                    emoji: randomItem.emoji,
+                    name: randomItem.name,
+                    points: randomItem.points,
+                    isFish: randomItem.isFish,
+                    floatOffset: Math.random() * Math.PI * 2
+                });
+            }
+        }
+        
+        function getRandomCatch() {
+            const totalRarity = catchableItems.reduce((sum, item) => sum + item.rarity, 0);
+            let rand = Math.random() * totalRarity;
+            for(let item of catchableItems) {
+                if(rand < item.rarity) {
+                    return { ...item };
+                }
+                rand -= item.rarity;
+            }
+            return { ...catchableItems[0] };
+        }
+        
+        function spawnHookedItem() {
+            const newCatch = getRandomCatch();
+            currentCatch = {
+                emoji: newCatch.emoji,
+                name: newCatch.name,
+                points: newCatch.points,
+                isFish: newCatch.isFish,
+                x: bobberX,
+                y: bobberY+5
+            };
+            fishHooked = true;
+            biteEffect = 16;
+            if(biteTimer) clearTimeout(biteTimer);
+            biteTimer = null;
+        }
+        
+        function castRod(clickX, clickY) {
+            if(fishing) return;
+            if(clickY < shoreLineY+8 || clickY > CH-30) return;
+            let castX = Math.min(CW-45, Math.max(430, clickX));
+            let castY = Math.min(waterBottomY-25, Math.max(shoreLineY+15, clickY));
+            
+            fishing = true;
+            fishHooked = false;
+            if(currentCatch) currentCatch = null;
+            if(biteTimer) { clearTimeout(biteTimer); biteTimer = null; }
+            biteEffect = 0;
+            
+            bobberX = castX;
+            bobberY = castY;
+            bobberActive = true;
+            
+            const biteDelay = randomRange(700, 2200);
+            biteTimer = setTimeout(() => {
+                if(fishing && !fishHooked && bobberActive) {
+                    spawnHookedItem();
+                }
+                biteTimer = null;
+            }, biteDelay);
+        }
+        
+        function reeling() {
+            if(!fishing) return;
+            if(!fishHooked) {
+                resetFishing();
+                return;
+            }
+            if(fishHooked && currentCatch) {
+                score += currentCatch.points;
+                updateScoreUI();
+                catchEffect.active = true;
+                catchEffect.x = bobberX;
+                catchEffect.y = bobberY;
+                catchEffect.timer = 20;
+                catchEffect.text = currentCatch.points >= 0 ? `+${currentCatch.points}` : `${currentCatch.points}`;
+                resetFishing();
+                addNewFloatingItem();
+            } else {
+                resetFishing();
+            }
+        }
+        
+        function addNewFloatingItem() {
+            let randomItem = { ...catchableItems[Math.floor(Math.random() * catchableItems.length)] };
+            floatingItems.push({
+                x: randomRange(430, CW-60),
+                y: randomRange(shoreLineY+20, waterBottomY-25),
+                size: randomRange(14, 26),
+                speedX: randomRange(0.3, 1.2) * (Math.random() > 0.5 ? 1 : -1),
+                emoji: randomItem.emoji,
+                name: randomItem.name,
+                points: randomItem.points,
+                isFish: randomItem.isFish,
+                floatOffset: Math.random() * Math.PI * 2
+            });
+            while(floatingItems.length > MAX_ITEMS + 2) floatingItems.shift();
+        }
+        
+        function resetFishing() {
+            fishing = false;
+            fishHooked = false;
+            bobberActive = false;
+            if(biteTimer) {
+                clearTimeout(biteTimer);
+                biteTimer = null;
+            }
+            currentCatch = null;
+            biteEffect = 0;
+        }
+        
+        function updateScoreUI() {
+            document.getElementById('fishCount').innerText = score;
+        }
+        
+        function updateFloatingItems() {
+            for(let i=0; i<floatingItems.length; i++) {
+                const f = floatingItems[i];
+                f.x += f.speedX;
+                if(f.x < 420) { f.x = 421; f.speedX = Math.abs(f.speedX); }
+                if(f.x > CW-35) { f.x = CW-36; f.speedX = -Math.abs(f.speedX); }
+                f.y += Math.sin(Date.now() * 0.003 + f.floatOffset) * 0.1;
+                f.y = Math.min(waterBottomY-20, Math.max(shoreLineY+15, f.y));
+            }
+        }
+        
+        // ========== ПРОРАБОТАННЫЙ КОТ ==========
+        function drawCat() {
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.2)';
+            ctx.shadowBlur = 6;
+            
+            // Хвост с полосками
+            ctx.beginPath();
+            ctx.moveTo(catX-35, catYBase-10);
+            ctx.quadraticCurveTo(catX-68, catYBase-28, catX-78, catYBase-50);
+            ctx.quadraticCurveTo(catX-70, catYBase-68, catX-54, catYBase-58);
+            ctx.quadraticCurveTo(catX-46, catYBase-48, catX-38, catYBase-28);
+            ctx.fillStyle = '#dbaa74';
+            ctx.fill();
+            ctx.fillStyle = '#c07a4a';
+            for(let i=0;i<3;i++) {
+                ctx.beginPath();
+                ctx.ellipse(catX-62 + i*8, catYBase-45 + i*3, 6, 4, -0.4, 0, Math.PI*2);
+                ctx.fill();
+            }
+            
+            // Тень
+            ctx.fillStyle = '#c09a60aa';
+            ctx.beginPath();
+            ctx.ellipse(catX-8, catYBase+20, 65, 22, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Тело с градиентом
+            const bodyGrd = ctx.createLinearGradient(catX-30, catYBase-30, catX+20, catYBase+10);
+            bodyGrd.addColorStop(0, '#f2ca94');
+            bodyGrd.addColorStop(1, '#e0b074');
+            ctx.fillStyle = bodyGrd;
+            ctx.beginPath();
+            ctx.ellipse(catX-5, catYBase-8, 44, 46, 0.05, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Грудка
+            ctx.fillStyle = '#f8deaa';
+            ctx.beginPath();
+            ctx.ellipse(catX-5, catYBase-18, 30, 28, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Полоски
+            ctx.fillStyle = '#c9965e';
+            ctx.beginPath();
+            ctx.moveTo(catX-22, catYBase-22);
+            ctx.lineTo(catX-8, catYBase-42);
+            ctx.lineTo(catX+6, catYBase-32);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(catX-28, catYBase-12);
+            ctx.lineTo(catX-14, catYBase-28);
+            ctx.lineTo(catX-2, catYBase-18);
+            ctx.fill();
+            
+            // Задние лапы
+            ctx.fillStyle = '#ecc08a';
+            ctx.beginPath();
+            ctx.ellipse(catX-28, catYBase+12, 24, 20, -0.2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(catX+12, catYBase+12, 24, 20, 0.2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#c99864';
+            for(let i=0;i<3;i++) {
+                ctx.beginPath();
+                ctx.ellipse(catX-34 + i*5, catYBase+20, 3, 4, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(catX+6 + i*5, catYBase+20, 3, 4, 0, 0, Math.PI*2);
+                ctx.fill();
+            }
+            
+            // Голова
+            const headGrd = ctx.createLinearGradient(catX-20, catYBase-70, catX+15, catYBase-30);
+            headGrd.addColorStop(0, '#f5d2a0');
+            headGrd.addColorStop(1, '#e8bc84');
+            ctx.fillStyle = headGrd;
+            ctx.beginPath();
+            ctx.ellipse(catX-4, catYBase-48, 35, 37, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Щёчки
+            ctx.fillStyle = '#f0c894';
+            ctx.beginPath();
+            ctx.ellipse(catX-22, catYBase-44, 12, 10, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(catX+14, catYBase-44, 12, 10, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Уши с кисточками
+            let earYoffset = Math.sin(Date.now() * 0.005) * 1.2;
+            ctx.fillStyle = '#c07a4a';
+            ctx.beginPath();
+            ctx.moveTo(catX-38, catYBase-68 + earYoffset);
+            ctx.lineTo(catX-10, catYBase-68 + earYoffset);
+            ctx.lineTo(catX-24, catYBase-98 + earYoffset);
+            ctx.fill();
+            ctx.fillStyle = '#f5bc9c';
+            ctx.beginPath();
+            ctx.moveTo(catX-34, catYBase-70 + earYoffset);
+            ctx.lineTo(catX-14, catYBase-70 + earYoffset);
+            ctx.lineTo(catX-24, catYBase-90 + earYoffset);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(catX-24, catYBase-101 + earYoffset);
+            ctx.lineTo(catX-28, catYBase-95 + earYoffset);
+            ctx.lineTo(catX-20, catYBase-95 + earYoffset);
+            ctx.fillStyle = '#a05a30';
+            ctx.fill();
+            
+            ctx.fillStyle = '#c07a4a';
+            ctx.beginPath();
+            ctx.moveTo(catX+2, catYBase-68 + earYoffset);
+            ctx.lineTo(catX+30, catYBase-68 + earYoffset);
+            ctx.lineTo(catX+16, catYBase-98 + earYoffset);
+            ctx.fill();
+            ctx.fillStyle = '#f5bc9c';
+            ctx.beginPath();
+            ctx.moveTo(catX+6, catYBase-70 + earYoffset);
+            ctx.lineTo(catX+26, catYBase-70 + earYoffset);
+            ctx.lineTo(catX+16, catYBase-90 + earYoffset);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(catX+16, catYBase-101 + earYoffset);
+            ctx.lineTo(catX+12, catYBase-95 + earYoffset);
+            ctx.lineTo(catX+20, catYBase-95 + earYoffset);
+            ctx.fillStyle = '#a05a30';
+            ctx.fill();
+            
+            // Глаза
+            let eyeOpen = (blink <= 0);
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(catX-18, catYBase-55, 9, eyeOpen?11:3, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#4a3220';
+            ctx.beginPath();
+            ctx.arc(catX-18, catYBase-53, 4.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(catX-18, catYBase-53, 2.2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(catX-22, catYBase-57, 2.5, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(catX+8, catYBase-55, 9, eyeOpen?11:3, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#4a3220';
+            ctx.beginPath();
+            ctx.arc(catX+8, catYBase-53, 4.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(catX+8, catYBase-53, 2.2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(catX+4, catYBase-57, 2.5, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Бровки
+            ctx.beginPath();
+            ctx.moveTo(catX-28, catYBase-64);
+            ctx.quadraticCurveTo(catX-21, catYBase-68, catX-12, catYBase-64);
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#8b5a3a';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(catX-2, catYBase-64);
+            ctx.quadraticCurveTo(catX+5, catYBase-68, catX+16, catYBase-64);
+            ctx.stroke();
+            
+            // Носик и ротик
+            ctx.fillStyle = '#e07a5f';
+            ctx.beginPath();
+            ctx.ellipse(catX-4, catYBase-44, 3.5, 2.8, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(catX-4, catYBase-40, 4, 0.1, Math.PI - 0.1);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(catX-4, catYBase-41);
+            ctx.lineTo(catX-4, catYBase-37);
+            ctx.stroke();
+            
+            // Усы
+            ctx.beginPath();
+            ctx.moveTo(catX-26, catYBase-45);
+            ctx.lineTo(catX-50, catYBase-48);
+            ctx.moveTo(catX-26, catYBase-43);
+            ctx.lineTo(catX-52, catYBase-42);
+            ctx.moveTo(catX-26, catYBase-41);
+            ctx.lineTo(catX-49, catYBase-36);
+            ctx.moveTo(catX+18, catYBase-45);
+            ctx.lineTo(catX+44, catYBase-48);
+            ctx.moveTo(catX+18, catYBase-43);
+            ctx.lineTo(catX+48, catYBase-42);
+            ctx.moveTo(catX+18, catYBase-41);
+            ctx.lineTo(catX+45, catYBase-36);
+            ctx.stroke();
+            
+            // Бантик
+            ctx.fillStyle = '#e34234';
+            ctx.beginPath();
+            ctx.ellipse(catX-14, catYBase-26, 11, 9, -0.3, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(catX+6, catYBase-26, 11, 9, 0.3, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#c02b1f';
+            ctx.beginPath();
+            ctx.ellipse(catX-4, catYBase-23, 8, 10, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#ffaa88';
+            ctx.beginPath();
+            ctx.arc(catX-6, catYBase-27, 2, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Передние лапы
+            ctx.fillStyle = '#ecc08a';
+            ctx.beginPath();
+            ctx.ellipse(catX+22, catYBase-22, 14, 11, -0.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#c99864';
+            for(let i=0;i<3;i++) {
+                ctx.beginPath();
+                ctx.ellipse(catX+15 + i*5, catYBase-15, 2.5, 3, -0.3, 0, Math.PI*2);
+                ctx.fill();
+            }
+            
+            // Удочка
+            ctx.beginPath();
+            ctx.moveTo(catX+26, catYBase-35);
+            ctx.lineTo(catX+76, catYBase-98);
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = '#8b5a2b';
+            ctx.stroke();
+            ctx.fillStyle = '#b57c48';
+            ctx.beginPath();
+            ctx.ellipse(catX+36, catYBase-46, 10, 13, 0.3, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#deb887';
+            ctx.beginPath();
+            ctx.ellipse(catX+36, catYBase-46, 6, 9, 0.3, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function drawFishingLine() {
+            if(!fishing || !bobberActive) return;
+            const rodTipX = catX + 58;
+            const rodTipY = catYBase - 94;
+            ctx.beginPath();
+            ctx.moveTo(rodTipX, rodTipY);
+            ctx.quadraticCurveTo((rodTipX+bobberX)/2 + 18*Math.sin(Date.now()*0.008), (rodTipY+bobberY)/2 - 14, bobberX, bobberY);
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#ad8a60';
+            ctx.setLineDash([6,5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = '#ff6f3c';
+            ctx.beginPath();
+            ctx.ellipse(bobberX, bobberY+2, 9, 6, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#ed4b2a';
+            ctx.beginPath();
+            ctx.ellipse(bobberX, bobberY-1, 5, 6, 0, 0, Math.PI*2);
+            ctx.fill();
+        }
+        
+        function drawBackground() {
+            ctx.fillStyle = '#f7d98c';
+            ctx.fillRect(0, 0, CW, shoreLineY+10);
+            for(let i=0;i<120;i++) {
+                ctx.fillStyle = `rgba(180,130,60,0.2)`;
+                ctx.beginPath();
+                ctx.arc(15+i*13, shoreLineY-2+Math.sin(i)*2, 1.5, 0, Math.PI*2);
+                ctx.fill();
+            }
+            const grad = ctx.createLinearGradient(0, shoreLineY, 0, CH);
+            grad.addColorStop(0, '#69c7e5');
+            grad.addColorStop(1, '#2f6f9f');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, shoreLineY, CW, CH-shoreLineY);
+            
+            for(let w=0; w<6; w++) {
+                let yy = shoreLineY+14 + w*14;
+                ctx.beginPath();
+                for(let xx=400; xx<CW; xx+=28) {
+                    ctx.lineTo(xx, yy + Math.sin(xx*0.025 + Date.now()*0.003)*4);
+                }
+                ctx.strokeStyle = '#ffffffcc';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+        
+        function drawFloatingItems() {
+            for(let item of floatingItems) {
+                ctx.save();
+                ctx.translate(item.x, item.y);
+                ctx.font = `${item.size}px "Segoe UI Emoji"`;
+                ctx.fillStyle = '#1e4d5e';
+                ctx.fillText(item.emoji, -12, 6);
+                ctx.restore();
+            }
+            
+            if(fishHooked && currentCatch && fishing && bobberActive) {
+                ctx.font = `40px "Segoe UI Emoji"`;
+                ctx.fillStyle = '#2c2418';
+                ctx.fillText(currentCatch.emoji, bobberX-20, bobberY-20);
+            }
+            if(biteEffect>0){
+                ctx.beginPath();
+                ctx.arc(bobberX-3, bobberY-8, 16, 0, Math.PI*2);
+                ctx.fillStyle = `rgba(255, 220, 70, ${biteEffect/14})`;
+                ctx.fill();
+                biteEffect--;
+            }
+        }
+        
+        function drawCatchEffect() {
+            if(catchEffect.active && catchEffect.timer>0){
+                ctx.beginPath();
+                ctx.arc(catchEffect.x, catchEffect.y, 20, 0, Math.PI*2);
+                ctx.fillStyle = `rgba(255, 210, 80, ${catchEffect.timer/16})`;
+                ctx.fill();
+                ctx.font = "bold 22px 'Segoe UI'";
+                ctx.fillStyle = "#2c2b1f";
+                ctx.fillText(catchEffect.text, catchEffect.x-18, catchEffect.y-18);
+                catchEffect.timer--;
+                if(catchEffect.timer<=0) catchEffect.active=false;
+            }
+        }
+        
+        function drawDialogueTip() {
+            if(fishHooked && fishing && currentCatch) {
+                ctx.font = "bold 19px 'Segoe UI'";
+                ctx.fillStyle = "#fff7e0";
+                ctx.shadowBlur = 3;
+                ctx.fillText(`🎣 ${currentCatch.name.toUpperCase()}! ТЯНИ!`, bobberX-105, bobberY-45);
+            } else if(fishing && !fishHooked) {
+                ctx.font = "italic 15px 'Segoe UI'";
+                ctx.fillStyle = "#daf4ff";
+                ctx.fillText("✈ может, самолёт поймаешь?", bobberX-90, bobberY-25);
+            }
+        }
+        
+        function updateBlink() {
+            if(blinkTimer <= 0) {
+                if(Math.random() < 0.008) {
+                    blink = 6;
+                    blinkTimer = 28;
+                }
+            } else {
+                blinkTimer--;
+                if(blink > 0) blink--;
+            }
+        }
+        
+        function animate() {
+            updateBlink();
+            updateFloatingItems();
+            drawBackground();
+            drawCat();
+            drawFishingLine();
+            drawFloatingItems();
+            drawCatchEffect();
+            drawDialogueTip();
+            requestAnimationFrame(animate);
+        }
+        
+        function handleCanvasClick(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            let mouseX = (e.clientX - rect.left) * scaleX;
+            let mouseY = (e.clientY - rect.top) * scaleY;
+            mouseX = Math.min(CW-10, Math.max(10, mouseX));
+            mouseY = Math.min(CH-10, Math.max(10, mouseY));
+            
+            if(fishing && fishHooked) {
+                reeling();
+            } 
+            else if(!fishing || (!fishHooked && !fishing)) {
+                if(mouseY > shoreLineY+5) castRod(mouseX, mouseY);
+                else if(fishing && !fishHooked) resetFishing();
+            }
+        }
+        
+        function resetGame() {
+            score = 0;
+            updateScoreUI();
+            resetFishing();
+            initFloatingItems();
+            catchEffect.active = false;
+            biteEffect = 0;
+            currentCatch = null;
+        }
+        
+        function init() {
+            initFloatingItems();
+            resetFishing();
+            updateScoreUI();
+            canvas.addEventListener('click', handleCanvasClick);
+            document.getElementById('resetBtn').addEventListener('click', () => resetGame());
+            animate();
+        }
+        
+        init();
+    })();
+</script>
+</body>
+</html>
